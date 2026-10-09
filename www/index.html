@@ -122,7 +122,7 @@ input,select,button{font-family:inherit}
 .top{padding-top:max(14px,env(safe-area-inset-top))}
 </style></head><body>
 <div class="top"><div class="brand"><svg style="width:44px;height:44px" viewBox="0 0 200 200" fill="none"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#60a5fa"/><stop offset="1" stop-color="#a78bfa"/></linearGradient><radialGradient id="disc"><stop offset="0" stop-color="#60a5fa" stop-opacity=".02"/><stop offset=".8" stop-color="#8b5cf6" stop-opacity=".10"/><stop offset="1" stop-color="#60a5fa" stop-opacity=".28"/></radialGradient></defs><g stroke="url(#g)" stroke-width="3" stroke-linecap="round"><path d="M86 78 V122"/><path d="M114 78 V122"/><path d="M80 78 H92"/><path d="M108 78 H120"/><path d="M80 122 H92"/><path d="M108 122 H120"/></g><rect x="97.5" y="116" width="5" height="68" rx="2.5" fill="url(#g)"/><path d="M100 150 L109 176 L100 172 Z" fill="url(#g)" opacity=".8"/><ellipse cx="100" cy="98" rx="15" ry="32" fill="url(#g)"/><ellipse cx="100" cy="84" rx="8" ry="13" fill="#0e1424" opacity=".55"/><g class="tr"><rect x="98.8" y="170" width="2.4" height="30" rx="1.2" fill="#c4b5fd"/><rect x="85" y="184.8" width="30" height="2.4" rx="1.2" fill="#c4b5fd"/></g><g class="mr"><circle cx="100" cy="100" r="92" fill="url(#disc)" stroke="#8da2ff" stroke-opacity=".35" stroke-dasharray="3 6"/><rect x="8" y="96.5" width="184" height="7" rx="3.5" fill="url(#g)"/><rect x="8" y="96.5" width="26" height="7" rx="3.5" fill="#f472b6" opacity=".9"/><rect x="166" y="96.5" width="26" height="7" rx="3.5" fill="#f472b6" opacity=".9"/><circle cx="100" cy="100" r="7" fill="#e6ebf5"/><circle cx="100" cy="100" r="3" fill="#0e1424"/></g></svg><div><h1>Rotorflight Log Analyzer</h1><small>Blackbox-Auswertung &middot; offline</small></div></div>
-<label class="btn go" style="cursor:pointer"><input id="file" type="file" style="display:none"><span id="fname">Log-Datei w&auml;hlen &hellip;</span></label>
+<label class="btn go" style="cursor:pointer"><input id="file" type="file" accept=".bbl,.BBL" style="display:none"><span id="fname">Log-Datei w&auml;hlen &hellip;</span></label>
 <label class="l">Zellen</label><input id="cells" type="number" min="0" max="14" value="0" style="width:60px" title="0 = automatisch">
 <select id="flight" style="display:none"></select></div>
 <div id="tabs"></div><div class="wrap"><div id="hero"></div><div id="body"><div id="msg" class="empty"><svg class="rotor" viewBox="0 0 200 200" fill="none"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#60a5fa"/><stop offset="1" stop-color="#a78bfa"/></linearGradient><radialGradient id="disc"><stop offset="0" stop-color="#60a5fa" stop-opacity=".02"/><stop offset=".8" stop-color="#8b5cf6" stop-opacity=".10"/><stop offset="1" stop-color="#60a5fa" stop-opacity=".28"/></radialGradient></defs><g stroke="url(#g)" stroke-width="3" stroke-linecap="round"><path d="M86 78 V122"/><path d="M114 78 V122"/><path d="M80 78 H92"/><path d="M108 78 H120"/><path d="M80 122 H92"/><path d="M108 122 H120"/></g><rect x="97.5" y="116" width="5" height="68" rx="2.5" fill="url(#g)"/><path d="M100 150 L109 176 L100 172 Z" fill="url(#g)" opacity=".8"/><ellipse cx="100" cy="98" rx="15" ry="32" fill="url(#g)"/><ellipse cx="100" cy="84" rx="8" ry="13" fill="#0e1424" opacity=".55"/><g class="tr"><rect x="98.8" y="170" width="2.4" height="30" rx="1.2" fill="#c4b5fd"/><rect x="85" y="184.8" width="30" height="2.4" rx="1.2" fill="#c4b5fd"/></g><g class="mr"><circle cx="100" cy="100" r="92" fill="url(#disc)" stroke="#8da2ff" stroke-opacity=".35" stroke-dasharray="3 6"/><rect x="8" y="96.5" width="184" height="7" rx="3.5" fill="url(#g)"/><rect x="8" y="96.5" width="26" height="7" rx="3.5" fill="#f472b6" opacity=".9"/><rect x="166" y="96.5" width="26" height="7" rx="3.5" fill="#f472b6" opacity=".9"/><circle cx="100" cy="100" r="7" fill="#e6ebf5"/><circle cx="100" cy="100" r="3" fill="#0e1424"/></g></svg>Tippe oben auf &bdquo;Log-Datei w&auml;hlen&ldquo; (.bbl) &ndash; die Auswertung startet sofort. Alles l&auml;uft lokal auf dem Ger&auml;t.</div></div></div>
@@ -772,6 +772,319 @@ input,select,button{font-family:inherit}
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.RFF = api;
 })(typeof self !== 'undefined' ? self : this);
 
+/* Vibrationsanalyse: Welch-Spektrum von Roh- und gefiltertem Gyro, Drehzahl-Harmonische, Filter-Empfehlungen */
+(function (root) {
+  'use strict';
+  var A = (typeof require !== 'undefined' && typeof module !== 'undefined') ? require('./analysis.js') : root.RFA, U = A.util;
+  var median = U.median, fin = U.fin;
+  var f0 = function (x) { return x.toFixed(0); }, f1 = function (x) { return x.toFixed(1); };
+  var AX = ['Roll', 'Nick', 'Gier'];
+  var VT = { lvl_hint: 4, lvl_warn: 10, peak_prom: 6, peak_amp: 1.0, att_good: 15, att_poor: 10, stable_pct: 0.04, unbal_amp: 8 };
+
+  // ---- FFT (Radix-2) ----
+  var _fft = {};
+  function fftTab(N) {
+    if (_fft[N]) return _fft[N];
+    var c = new Float64Array(N / 2), s = new Float64Array(N / 2), rev = new Uint32Array(N), bits = Math.log2(N), i;
+    for (i = 0; i < N / 2; i++) { c[i] = Math.cos(2 * Math.PI * i / N); s[i] = -Math.sin(2 * Math.PI * i / N); }
+    for (i = 0; i < N; i++) { var r = 0, x = i; for (var b = 0; b < bits; b++) { r = (r << 1) | (x & 1); x >>= 1; } rev[i] = r; }
+    return (_fft[N] = { c: c, s: s, rev: rev });
+  }
+  function fft(re, im) {
+    var N = re.length, T = fftTab(N), i, j, k, len, half, step, t;
+    for (i = 0; i < N; i++) { j = T.rev[i]; if (j > i) { t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+    for (len = 2; len <= N; len <<= 1) {
+      half = len >> 1; step = N / len;
+      for (i = 0; i < N; i += len) for (k = 0; k < half; k++) {
+        var wr = T.c[k * step], wi = T.s[k * step], a = i + k, b = a + half;
+        var xr = re[b] * wr - im[b] * wi, xi = re[b] * wi + im[b] * wr;
+        re[b] = re[a] - xr; im[b] = im[a] - xi; re[a] += xr; im[a] += xi;
+      }
+    }
+  }
+  // einseitige Leistungsdichte eines Fensters (Hann, Mittelwert entfernt)
+  function psd(y, off, N, fs, w, U2, re, im, out) {
+    var i, mean = 0; for (i = 0; i < N; i++) mean += y[off + i]; mean /= N;
+    for (i = 0; i < N; i++) { re[i] = (y[off + i] - mean) * w[i]; im[i] = 0; }
+    fft(re, im);
+    var h = N / 2, sc = 2 / (fs * U2);
+    for (var k = 0; k <= h; k++) out[k] = (re[k] * re[k] + im[k] * im[k]) * sc * ((k === 0 || k === h) ? 0.5 : 1);
+  }
+  function bandRms(P, df, lo, hi) { var s = 0; for (var k = 1; k < P.length; k++) { var f = k * df; if (f >= lo && f < hi) s += P[k] * df; } return Math.sqrt(s); }
+  function localBase(P, j) {
+    var a = []; for (var d = 3; d <= 12; d++) { if (j - d >= 1) a.push(P[j - d]); if (j + d < P.length) a.push(P[j + d]); }
+    return Math.max(median(a), 1e-12);
+  }
+  function parseHdrNums(s) { return String(s === undefined ? '' : s).split(',').map(function (x) { return parseFloat(x); }); }
+
+  function analyze(m) {
+    var V = { ok: false }, fl = m.fl, fs = m.fs, hdr = m.hdr || {}, i, k;
+    if (!fl || !m.ok) return V;
+    var raw = [fl.cols['gyroRAW[0]'], fl.cols['gyroRAW[1]'], fl.cols['gyroRAW[2]']], adc = [fl.cols['gyroADC[0]'], fl.cols['gyroADC[1]'], fl.cols['gyroADC[2]']];
+    var hasRaw = !!(raw[0] && raw[1] && raw[2]), hasAdc = !!(adc[0] && adc[1] && adc[2]);
+    if (!hasAdc && !hasRaw) { V.error = 'Keine Gyro-Daten im Log.'; return V; }
+    if (!hasAdc) adc = raw;
+    var N = Math.max(256, Math.min(2048, Math.pow(2, Math.round(Math.log2(fs))))), n = fl.n;
+    if (n < N * 3) { V.error = 'Flugphase zu kurz fuer eine Spektralanalyse.'; return V; }
+    var hsA = fl.get('headspeed'), hsv = []; for (i = 0; i < n; i++) if (hsA[i] > 50) hsv.push(hsA[i]);
+    var hsMed = hsv.length ? median(hsv) : m.target, fh = hsMed / 60, df = fs / N, h = N / 2;
+    var w = new Float64Array(N), U2 = 0; for (i = 0; i < N; i++) { w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (N - 1)); U2 += w[i] * w[i]; }
+    var re = new Float64Array(N), im = new Float64Array(N), tmp = new Float64Array(h + 1);
+    var accR = [0, 1, 2].map(function () { return new Float64Array(h + 1); }), accA = [0, 1, 2].map(function () { return new Float64Array(h + 1); });
+    var nWin = 0, hop = N >> 1, tt = [], lvR = [], lvA = [], lvH = [];
+    var hi = Math.max(20, 0), t = fl.t;
+    for (var s0 = 0; s0 + N <= n; s0 += hop) {
+      var hsAvg = 0, stable = true; for (i = s0; i < s0 + N; i++) { hsAvg += hsA[i]; if (Math.abs(hsA[i] - hsMed) > VT.stable_pct * hsMed) stable = false; } hsAvg /= N;
+      var pr = 0, pa = 0;
+      for (k = 0; k < 3; k++) {
+        if (hasRaw) { psd(raw[k], s0, N, fs, w, U2, re, im, tmp); if (stable) for (i = 0; i <= h; i++) accR[k][i] += tmp[i]; var r = bandRms(tmp, df, 20, 1e9); pr += r * r; }
+        psd(adc[k], s0, N, fs, w, U2, re, im, tmp); if (stable) for (i = 0; i <= h; i++) accA[k][i] += tmp[i]; var a = bandRms(tmp, df, 20, 1e9); pa += a * a;
+      }
+      tt.push(t[s0 + (N >> 1)]); lvR.push(hasRaw ? Math.sqrt(pr / 3) : NaN); lvA.push(Math.sqrt(pa / 3)); lvH.push(hsAvg);
+      if (stable) nWin++;
+    }
+    if (nWin < 6) { V.error = 'Zu wenig Phasen mit stabiler Drehzahl fuer eine Spektralanalyse (' + nWin + ').'; return V; }
+    for (k = 0; k < 3; k++) for (i = 0; i <= h; i++) { accR[k][i] /= nWin; accA[k][i] /= nWin; }
+    var nyq = fs / 2;
+    V = { ok: true, fs: fs, N: N, df: df, nyq: nyq, nWin: nWin, fh: fh, hs: hsMed, hasRaw: hasRaw, psdR: hasRaw ? accR : null, psdA: accA,
+      lvl: { t: Float64Array.from(tt), raw: Float64Array.from(lvR), adc: Float64Array.from(lvA), hs: Float64Array.from(lvH) } };
+    // Pegel je Achse / Band
+    var edges = [0, 20, 60, 120, 250, 1e9], bands = [];
+    for (i = 0; i < edges.length - 1; i++) if (edges[i] < nyq - df) bands.push([edges[i], Math.min(edges[i + 1], nyq)]);
+    V.bands = bands;
+    V.rmsA = accA.map(function (P) { return bands.map(function (b) { return bandRms(P, df, b[0], b[1] + 1e-9); }); });
+    V.rmsR = hasRaw ? accR.map(function (P) { return bands.map(function (b) { return bandRms(P, df, b[0], b[1] + 1e-9); }); }) : null;
+    V.hfA = accA.map(function (P) { return bandRms(P, df, 20, 1e9); });
+    V.hfR = hasRaw ? accR.map(function (P) { return bandRms(P, df, 20, 1e9); }) : null;
+    // Filter-Einstellungen
+    var lp1t = parseFloat(hdr.gyro_lpf1_type), lp1 = parseFloat(hdr.gyro_lpf1_static_hz), lp2 = parseFloat(hdr.gyro_lpf2_static_hz);
+    V.set = { lpf1_type: lp1t, lpf1: lp1, lpf2: lp2, dn_count: parseFloat(hdr.dyn_notch_count), dn_q: parseFloat(hdr.dyn_notch_q), dn_min: parseFloat(hdr.dyn_notch_min_hz), dn_max: parseFloat(hdr.dyn_notch_max_hz),
+      rpm_preset: parseFloat(hdr.gyro_rpm_notch_preset), rpm_src: parseHdrNums(hdr.gyro_rpm_notch_source_pitch).filter(function (x) { return x > 0; }).length };
+    V.lp_on = fin(lp1) && lp1 > 0 && lp1t > 0;
+    // Spitzen: im Rohsignal (falls vorhanden) sonst im gefilterten
+    var base = hasRaw ? accR : accA, cand = [], j;
+    for (k = 0; k < 3; k++) {
+      var P = base[k];
+      for (j = Math.ceil(15 / df); j < h - 1; j++) {
+        if (!(P[j] >= P[j - 1] && P[j] >= P[j + 1])) continue;
+        var prom = P[j] / localBase(P, j);
+        if (prom >= VT.peak_prom) cand.push({ ax: k, j: j, prom: prom, p: P[j] });
+      }
+    }
+    cand.sort(function (a, b) { return b.p - a.p; });
+    var peaks = [];
+    cand.forEach(function (c) {
+      for (var q = 0; q < peaks.length; q++) if (Math.abs(peaks[q].j - c.j) <= 2) { peaks[q].axes[c.ax] = true; return; }
+      var ax = [false, false, false]; ax[c.ax] = true; peaks.push({ j: c.j, f: c.j * df, axis: c.ax, axes: ax, prom: c.prom });
+    });
+    var amp = function (P, j) { return Math.sqrt((P[j - 1] + P[j] + P[j + 1]) * df); };
+    peaks.forEach(function (p) {
+      var jj = p.j;
+      p.ampR = hasRaw ? Math.max(amp(accR[0], jj), amp(accR[1], jj), amp(accR[2], jj)) : NaN;
+      p.ampA = Math.max(amp(accA[0], jj), amp(accA[1], jj), amp(accA[2], jj));
+      var pk = p.axis; p.ampRax = hasRaw ? amp(accR[pk], jj) : NaN; p.ampAax = amp(accA[pk], jj);
+      p.att = hasRaw ? 20 * Math.log10(Math.max(p.ampRax, 1e-9) / Math.max(p.ampAax, 1e-9)) : NaN;
+      var nn = p.f / fh, nr = Math.round(nn), tol = Math.max(1.5 * df, 0.02 * p.f);
+      p.n = (nr >= 1 && nr <= 12 && Math.abs(p.f - nr * fh) <= tol) ? nr : 0;
+      p.nfrac = nn;
+      p.over_lpf = V.lp_on && p.f > 1.6 * lp1;
+      p.in_dyn = fin(V.set.dn_min) && fin(V.set.dn_max) && V.set.dn_count > 0 && p.f >= V.set.dn_min && p.f <= V.set.dn_max;
+    });
+    peaks.sort(function (a, b) { return (hasRaw ? b.ampR - a.ampR : b.ampA - a.ampA); });
+    V.peaks = peaks.slice(0, 12);
+    return V;
+  }
+
+  // ---- Befunde ----
+  function findings(V, m) {
+    var F = [];
+    function add(sev, title, obs, todo) { F.push({ sev: sev, area: 'Vibration', title: title, obs: obs, todo: todo || '' }); }
+    if (!V || !V.ok) { if (V && V.error) add('info', 'Vibrationsanalyse nicht moeglich', V.error, ''); return F; }
+    var S = V.set, lim = 'Das Log enthaelt Frequenzen bis ' + f0(V.nyq) + ' Hz (Abtastrate ' + f0(V.fs) + ' Hz).';
+    if (V.fs < 1000) add('info', 'Log-Rate begrenzt die Analyse', lim + ' Schwingungen darueber sind nicht sichtbar, und Rohsignal-Spitzen oberhalb von ca. ' + f0(V.nyq * 0.6) + ' Hz koennen Spiegelfrequenzen (Aliasing) sein.',
+      'Fuer eine genaue Filter-Abstimmung die Blackbox-Abtastrate im Rotorflight Configurator (Reiter Blackbox) auf mindestens 1 kHz erhoehen und einen ruhigen Schwebeflug von ca. 30 s loggen.');
+    if (!V.hasRaw) add('info', 'Kein ungefiltertes Gyro im Log', 'Es wird nur das gefilterte Gyro ausgewertet. Damit sind nur uebrig gebliebene Schwingungen sichtbar, nicht deren Ursache und die Wirkung der Filter.',
+      'Im Configurator (Blackbox) das ungefilterte Gyro (gyroRAW) mitloggen, falls die Option vorhanden ist.');
+    // Gesamtpegel (gefiltert, > 20 Hz)
+    var wi = 0; V.hfA.forEach(function (x, i) { if (x > V.hfA[wi]) wi = i; });
+    var lv = V.hfA[wi], sev = lv >= VT.lvl_warn ? 'warn' : lv >= VT.lvl_hint ? 'hint' : 'ok';
+    var lvTxt = V.hfA.map(function (x, i) { return AX[i] + ' ' + f1(x); }).join(', ');
+    add(sev, sev === 'ok' ? 'Restvibration nach den Filtern niedrig' : 'Restvibration nach den Filtern erhoeht',
+      'Verbleibende Vibration im gefilterten Gyro oberhalb 20 Hz (Effektivwert in deg/s): ' + lvTxt + '. Schwerpunkt: ' + AX[wi] + '. (Richtwerte: unter ' + VT.lvl_hint + ' ruhig, ab ' + VT.lvl_hint + ' Hinweis, ab ' + VT.lvl_warn + ' deutlich.)' +
+      (V.hasRaw ? ' Vor den Filtern lag der Pegel bei ' + V.hfR.map(function (x, i) { return AX[i] + ' ' + f1(x); }).join(', ') + '.' : ''),
+      sev === 'ok' ? '' : 'Zuerst die Mechanik pruefen (Blattspur und -gewicht, Rotorkopf-Spiel, Lager, Zahnraeder, Heckrotor, lockere Anbauteile), erst danach die Filter verschaerfen - Filter verdecken Probleme und kosten Phase.');
+    // Filterwirkung
+    if (V.hasRaw) {
+      var att = V.hfR.map(function (r, i) { return 20 * Math.log10(Math.max(r, 1e-9) / Math.max(V.hfA[i], 1e-9)); });
+      add('info', 'Filterwirkung', 'Die Filter daempfen die Vibration oberhalb 20 Hz um ' + att.map(function (a, i) { return AX[i] + ' ' + f0(a) + ' dB'; }).join(', ') + ' (6 dB = halbe Amplitude, 20 dB = ein Zehntel).' +
+        (fin(S.lpf1) && S.lpf1 > 0 ? ' Aktiv: Tiefpass 1 bei ' + f0(S.lpf1) + ' Hz' + (S.lpf2 > 0 ? ', Tiefpass 2 bei ' + f0(S.lpf2) + ' Hz' : '') : '') +
+        (S.dn_count > 0 ? ', dynamischer Notch (' + f0(S.dn_count) + ' Stueck, ' + f0(S.dn_min) + '-' + f0(S.dn_max) + ' Hz, Q ' + f0(S.dn_q) + ')' : '') + (S.rpm_preset > 0 ? ', RPM-Filter (' + f0(S.rpm_src) + ' Quellen)' : '') + '.', '');
+    }
+    // Spitzen
+    var P = V.peaks.filter(function (p) { return (V.hasRaw ? p.ampR : p.ampA) >= VT.peak_amp; }), shown = 0, good = 0;
+    P.forEach(function (p) {
+      var cls = p.n ? (p.n + 'P (Hauptrotor-Drehzahl x ' + p.n + ')') : 'feste Frequenz, nicht an die Kopfdrehzahl gekoppelt', axs = AX.filter(function (a, i) { return p.axes[i]; }).join('/');
+      var res = p.ampA >= VT.peak_amp && p.prom > 0, goodAtt = V.hasRaw && p.att >= VT.att_good;
+      if (V.hasRaw && goodAtt) { good++; return; }
+      if (shown >= 4) return; shown++;
+      var ob = 'Spitze bei ' + f1(p.f) + ' Hz (' + axs + ') - ' + cls + '. ' + (V.hasRaw ? 'Roh ' + f1(p.ampR) + ' deg/s, nach den Filtern ' + f1(p.ampA) + ' deg/s (Daempfung ' + f0(p.att) + ' dB).' : 'Amplitude ' + f1(p.ampA) + ' deg/s.');
+      var sv = (p.ampA >= 3 && !p.over_lpf) ? 'hint' : 'info';
+      var todo = '';
+      if (p.over_lpf) todo = 'Liegt klar oberhalb des Tiefpasses (' + f0(S.lpf1) + ' Hz) und wird davon gedaempft - keine Filteraenderung noetig.';
+      else if (p.n) todo = 'Drehzahlgekoppelte Spitze: der RPM-Filter sollte sie erfassen. Im Configurator (Filter) pruefen, ob die ' + p.n + '. Harmonische des Hauptrotors abgedeckt ist ' + (S.rpm_src > 0 ? '(aktuell ' + f0(S.rpm_src) + ' RPM-Filter-Quellen) ' : '') + ' und deren Q-Wert verringern (breiterer Notch).' + (p.n === 1 && (V.hasRaw ? p.ampR >= VT.unbal_amp : p.ampA >= 3) ? ' Starke 1P-Spitze deutet zusaetzlich auf Unwucht oder Blattspur-Fehler hin: Blaetter wiegen/spuren, Rotorkopf pruefen.' : '');
+      else todo = 'Feste Frequenz: typisch Resonanz (Heckrohr, Rahmen, Servohalter) oder Motor/Getriebe/Heckrotor. Test: Kopfdrehzahl aendern - wandert die Spitze mit, ist sie drehzahlgekoppelt, sonst eine Resonanz. ' + (p.in_dyn ? 'Sie liegt im Bereich des dynamischen Notch (' + f0(S.dn_min) + '-' + f0(S.dn_max) + ' Hz): Anzahl der Notches erhoehen.' : S.dn_count > 0 ? 'Sie liegt ausserhalb des dynamischen Notch-Bereichs (' + f0(S.dn_min) + '-' + f0(S.dn_max) + ' Hz): Bereich erweitern.' : 'Ein dynamischer Notch ist nicht aktiv: aktivieren (dyn_notch_count).');
+      add(sv, 'Spitze bei ' + f1(p.f) + ' Hz' + (p.n ? ' (' + p.n + 'P)' : ''), ob, todo);
+    });
+    if (V.hasRaw && good) add('ok', good + ' Spitze' + (good > 1 ? 'n' : '') + ' im Rohsignal gut ausgefiltert', 'Diese Frequenzen sind im Rohsignal sichtbar, werden aber um mindestens ' + VT.att_good + ' dB gedaempft - die Filter arbeiten hier wie vorgesehen.', '');
+    if (!P.length) add('ok', 'Keine auffaelligen Spitzen', 'Im Spektrum gibt es keine deutlichen Einzelspitzen oberhalb von 15 Hz.', '');
+    return F;
+  }
+
+  // ---- Filter-Empfehlungen (mit CLI, falls Parameter im Header bekannt) ----
+  function recommendations(V, m) {
+    var R = [];
+    if (!V || !V.ok) return R;
+    var S = V.set, hf = Math.max.apply(null, V.hfA), peaks = V.peaks.filter(function (p) { return (V.hasRaw ? p.ampR : p.ampA) >= VT.peak_amp; });
+    var resid = peaks.filter(function (p) { return !p.over_lpf && p.ampA >= 2.5 && (!V.hasRaw || p.att < VT.att_poor); });
+    resid.slice(0, 2).forEach(function (p) {
+      if (p.n) R.push({ area: 'Filter', title: 'RPM-Filter ' + p.n + 'P schaerfen (' + f1(p.f) + ' Hz)', obs: 'Die ' + p.n + '. Harmonische der Kopfdrehzahl bleibt nach den Filtern mit ' + f1(p.ampA) + ' deg/s uebrig' + (V.hasRaw ? ' (nur ' + f0(p.att) + ' dB gedaempft).' : '.'),
+        cli: [], note: 'Rotorflight Configurator > Filter > RPM-Filter: die Quelle fuer diese Harmonische aktivieren bzw. ihren Q-Wert um etwa ein Drittel senken. Ein Parameter pro Flug.' });
+      else if (S.dn_count > 0 && p.in_dyn && S.dn_count < 8) R.push({ area: 'Filter', title: 'Dynamischen Notch erweitern (' + f1(p.f) + ' Hz)', obs: 'Feste Spitze bei ' + f1(p.f) + ' Hz bleibt mit ' + f1(p.ampA) + ' deg/s uebrig, obwohl sie im Notch-Bereich liegt.', cli: ['set dyn_notch_count = ' + (S.dn_count + 1)] });
+      else if (S.dn_count > 0 && !p.in_dyn && fin(S.dn_min)) R.push({ area: 'Filter', title: 'Notch-Bereich anpassen (' + f1(p.f) + ' Hz)', obs: 'Feste Spitze bei ' + f1(p.f) + ' Hz liegt ausserhalb des dynamischen Notch-Bereichs (' + f0(S.dn_min) + '-' + f0(S.dn_max) + ' Hz).',
+        cli: [p.f > S.dn_max ? 'set dyn_notch_max_hz = ' + Math.min(Math.ceil((p.f + 20) / 10) * 10, V.nyq > 0 ? Math.floor(V.nyq / 10) * 10 + 200 : 400) : 'set dyn_notch_min_hz = ' + Math.max(Math.floor((p.f - 10) / 10) * 10, 10)] });
+      else if (!(S.dn_count > 0)) R.push({ area: 'Filter', title: 'Dynamischen Notch aktivieren (' + f1(p.f) + ' Hz)', obs: 'Feste Spitze bei ' + f1(p.f) + ' Hz bleibt ungefiltert (' + f1(p.ampA) + ' deg/s).', cli: ['set dyn_notch_count = 2'] });
+    });
+    // Tiefpass-Reserve bzw. Verschaerfung
+    if (V.lp_on && fin(S.lpf1)) {
+      var up = Math.round(S.lpf1 / 10) * 10 + 20, H = function (f, fc) { return 1 / Math.sqrt(1 + (f / fc) * (f / fc)); };
+      var pred = V.psdA.map(function (P) { var s = 0; for (var k = 1; k < P.length; k++) { var f = k * V.df; if (f >= 20) { var r = H(f, up) / H(f, S.lpf1); s += P[k] * r * r * V.df; } } return Math.sqrt(s); }), pMax = Math.max.apply(null, pred);
+      if (pMax < Math.min(3, VT.lvl_hint * 0.75) && S.lpf1 <= 140 && !resid.length && V.nyq > S.lpf1 * 1.4)
+        R.push({ area: 'Filter', title: 'Tiefpass 1 kann etwas hoeher (weniger Verzoegerung)', obs: 'Die Restvibration ist niedrig (' + f1(hf) + ' deg/s). Mit ' + f0(up) + ' Hz statt ' + f0(S.lpf1) + ' Hz ergibt eine Abschaetzung aus dem Spektrum nur ' + f1(pMax) + ' deg/s. Ein hoeherer Grenzwert verringert die Signalverzoegerung und kann die Regelung straffen.',
+          cli: ['set gyro_lpf1_static_hz = ' + up], note: 'Nur testweise und einen Schritt pro Flug: danach Servos (Temperatur, Geraeusch) und Heck beobachten und die Restvibration erneut vergleichen. Das Log reicht nur bis ' + f0(V.nyq) + ' Hz - Anteile darueber sind nicht beurteilbar.' });
+      else if (hf >= VT.lvl_warn && !peaks.length && S.lpf1 >= 60)
+        R.push({ area: 'Filter', title: 'Breitband-Vibration: Tiefpass 1 senken oder Ursache suchen', obs: 'Die Restvibration ist erhoeht (' + f1(hf) + ' deg/s) ohne einzelne Spitzen - typisch fuer ein breites Rauschen (Lager, Zahnraeder, Servos, Verkabelung).',
+          cli: ['set gyro_lpf1_static_hz = ' + (Math.round(S.lpf1 / 10) * 10 - 20)], note: 'Eine Senkung erhoeht die Verzoegerung. Besser zuerst die mechanische Ursache beseitigen.' });
+    }
+    // Unwucht (1P) unabhaengig von den Filtern
+    peaks.filter(function (p) { return p.n === 1 && (V.hasRaw ? p.ampR >= VT.unbal_amp : p.ampA >= 3); }).slice(0, 1).forEach(function (p) {
+      R.push({ area: 'Mechanik', title: 'Starke 1P-Vibration (' + f1(p.f) + ' Hz): Unwucht oder Blattspur', obs: 'Die Grundfrequenz des Hauptrotors ist mit ' + f1(V.hasRaw ? p.ampR : p.ampA) + ' deg/s deutlich ausgepraegt. Das ist keine Filter-, sondern eine Mechanik-Frage; Filter blenden sie nur aus.',
+        cli: [], note: 'Blaetter auf gleiches Gewicht und gleichen Schwerpunkt pruefen, Blattspur kontrollieren, Rotorkopf/Blatthalter auf Spiel, Hauptwelle und Lager pruefen.' });
+    });
+    return R;
+  }
+  var api = { analyze: analyze, findings: findings, recommendations: recommendations, VT: VT, AX: AX };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.RFV = api;
+})(typeof self !== 'undefined' ? self : this);
+
+/* Governor-Abstimmung (interner Rotorflight-Governor): Anteile, Lastwechsel-Reaktion, Empfehlungen */
+(function (root) {
+  'use strict';
+  var A = (typeof require !== 'undefined' && typeof module !== 'undefined') ? require('./analysis.js') : root.RFA, U = A.util, T = A.THRESH;
+  var median = U.median, fin = U.fin, pctl = U.percentile;
+  var f0 = function (x) { return x.toFixed(0); }, f1 = function (x) { return x.toFixed(1); };
+  var GT = { ev_min: 8, err_hint: 15, rec_slow: 0.6, offset: 8, dip_p01: -60 };
+
+  function moments(a, idx) { var s = 0, s2 = 0, c = 0; for (var k = 0; k < idx.length; k++) { var v = a[idx[k]]; if (v === v) { s += v; s2 += v * v; c++; } } if (!c) return { mean: NaN, std: NaN }; var mu = s / c; return { mean: mu, std: Math.sqrt(Math.max(0, s2 / c - mu * mu)) }; }
+
+  function analyze(m) {
+    var G = { ok: false, internal: null }, fl = m.fl, fs = m.fs, hdr = m.hdr || {}, i;
+    if (!fl || !m.ok) return G;
+    G.gains = A.pidParts(hdr.govPID);
+    var need = ['govSum', 'govP', 'govI', 'govD', 'govF'];
+    if (!need.every(function (k) { return fl.has(k); })) { G.reason = 'Die Governor-Anteile (govP, govI, ...) sind im Log nicht enthalten.'; return G; }
+    var sum = fl.get('govSum'), gp = fl.get('govP'), gi = fl.get('govI'), gd = fl.get('govD'), gf = fl.get('govF'), hs = fl.get('headspeed'), tg = fl.get('govTarget'), rc = fl.get('rcCommand[3]');
+    var act = Math.max(U.nanmax(sum), 0) > 0 && (Math.max(U.nanmax(gp), -U.nanmin(gp)) + Math.max(U.nanmax(gi), -U.nanmin(gi)) + U.nanmax(gf)) > 0;
+    G.internal = act; G.ok = true;
+    if (!act) { G.reason = 'Die Governor-Anteile sind im ganzen Flug 0 - die Drehzahl wird nicht vom internen Rotorflight-Governor geregelt (z. B. ESC-Governor oder Gaskurve).'; return G; }
+    var n = fl.n, idx = []; for (i = 0; i < n; i++) if (Math.abs(tg[i] - m.target) <= 2 || !m.target_fixed) idx.push(i);
+    G.terms = { P: moments(gp, idx), I: moments(gi, idx), D: moments(gd, idx), F: moments(gf, idx), S: moments(sum, idx) };
+    var e = new Float64Array(n); for (i = 0; i < n; i++) e[i] = hs[i] - tg[i];
+    G.series = { t: fl.t, e: e, P: gp, I: gi, D: gd, F: gf };
+    // Lastwechsel: schneller Kollektiv-Anstieg / -Abfall
+    G.ev = null;
+    if (m.target_fixed && rc && fs > 100) {
+      var w = Math.max(3, Math.round(0.2 * fs)), cs = new Float64Array(n), dc = new Float64Array(n), h = Math.floor(w / 2);
+      for (i = 0; i < n; i++) { var s = 0, c = 0; for (var j = Math.max(0, i - h); j <= Math.min(n - 1, i + h); j++) { s += rc[j]; c++; } cs[i] = s / c; }
+      for (i = 1; i < n - 1; i++) dc[i] = (cs[i + 1] - cs[i - 1]) * fs / 2;
+      var ad = Array.prototype.map.call(dc, Math.abs), thr = pctl(ad, 90), win0 = Math.round(0.1 * fs), win1 = Math.round(0.8 * fs), gap = Math.round(0.6 * fs), last = -1e9, up = [], dn = [];
+      for (i = w; i < n - Math.round(3 * fs); i++) {
+        if (ad[i] < thr || i - last < gap) continue;
+        var lo = Math.max(0, i - w), hi = Math.min(n, i + w), isMax = true;
+        for (var q = lo; q < hi; q++) if (ad[q] > ad[i] && Math.sign(dc[q]) === Math.sign(dc[i])) { isMax = false; break; }
+        if (!isMax) continue; last = i;
+        var sm = 0, mx = -1e9, mn = 1e9; for (q = i + win0; q < i + win1; q++) sm += e[q]; sm /= (win1 - win0);
+        for (q = i; q < i + win1; q++) { if (e[q] > mx) mx = e[q]; if (e[q] < mn) mn = e[q]; }
+        var seg = e.subarray(i, i + Math.round(3 * fs)), k0 = 0, ab = 0; for (q = 0; q < seg.length; q++) if (Math.abs(seg[q]) > ab) { ab = Math.abs(seg[q]); k0 = q; }
+        var jq = k0; while (jq < seg.length && Math.abs(seg[jq]) >= 20) jq++;
+        (dc[i] > 0 ? up : dn).push({ mean: sm, max: mx, min: mn, rec: (jq - k0) / fs });
+      }
+      var med = function (a, k) { return median(a.map(function (x) { return x[k]; })); };
+      if (up.length >= GT.ev_min && dn.length >= GT.ev_min) G.ev = { nUp: up.length, nDn: dn.length, upMean: med(up, 'mean'), dnMean: med(dn, 'mean'), upMax: med(up, 'max'), upMin: med(up, 'min'), dnMax: med(dn, 'max'), dnMin: med(dn, 'min'), recUp: med(up, 'rec'), recDn: med(dn, 'rec') };
+    }
+    return G;
+  }
+
+  function findings(G, m) {
+    var F = [];
+    function add(sev, title, obs, todo) { F.push({ sev: sev, area: 'Governor', title: title, obs: obs, todo: todo || '' }); }
+    if (!G || !G.ok) { if (G && G.reason) add('info', 'Governor-Abstimmung nicht moeglich', G.reason, ''); return F; }
+    if (!G.internal) { add('info', 'Interner Governor nicht aktiv', G.reason, 'Governor-PID-Empfehlungen entfallen. Bei ESC-Governor die Drehzahlregelung im ESC abstimmen.'); return F; }
+    var t = G.terms, g = G.gains, gtxt = (g[0] === g[0] ? 'P ' + f0(g[0]) + ', I ' + f0(g[1]) + ', D ' + f0(g[2]) + ', F ' + f0(g[3]) : '');
+    add('info', 'Governor-Anteile', 'Mittlerer Gas-Ausgang ' + f0(t.S.mean) + ' (Skala 0-1000). Den Grundanteil traegt der I-Anteil (Mittel ' + f0(t.I.mean) + '); P schwankt um +-' + f0(t.P.std) + ', F um +-' + f0(t.F.std) + ', D um +-' + f1(t.D.std) + '. Eingestellt laut Log: ' + gtxt + ' (Reihenfolge laut Header).', '');
+    if (G.ev) {
+      var ev = G.ev, big = Math.max(Math.abs(ev.upMean), Math.abs(ev.dnMean)) >= GT.err_hint, slow = Math.max(ev.recUp, ev.recDn) > GT.rec_slow;
+      add(big || slow ? 'hint' : 'ok', 'Reaktion auf Kollektiv-Aenderungen',
+        'Nach ' + ev.nUp + ' schnellen Kollektiv-Anstiegen liegt die Drehzahl im Mittel ' + (ev.upMean >= 0 ? '+' : '') + f0(ev.upMean) + ' U/min vom Ziel entfernt (groesster Ausschlag ' + f0(ev.upMax) + ' / ' + f0(ev.upMin) + '), nach ' + ev.nDn + ' schnellen Abfaellen ' + (ev.dnMean >= 0 ? '+' : '') + f0(ev.dnMean) + ' U/min (' + f0(ev.dnMax) + ' / ' + f0(ev.dnMin) + '). Rueckkehr in +-20 U/min nach median ' + f1(Math.max(ev.recUp, ev.recDn)) + ' s.' +
+        ' Richtung: zu wenig Vorsteuerung (F) zeigt sich als Einbruch beim Anstieg, zu viel als Ueberschwingen beim Anstieg.', '');
+    }
+    return F;
+  }
+
+  function recommendations(G, m) {
+    var R = [];
+    if (!G || !G.ok || !G.internal) return R;
+    var g = G.gains, P = g[0], I = g[1], D = g[2], Fv = g[3], gv = m.gov || {}, ev = G.ev, osc = m.osc || {}, seen = {}, cands = [];
+    var oscPct = osc.n ? osc.n_big / osc.n * 100 : 0, oscF = osc.f && osc.f.length ? median(osc.f) : NaN, powerLimit = m.mot && (m.mot.near >= 10 || m.mot.peak >= 99);
+    function step(v, pct) { return Math.max(2, Math.round(Math.abs(v) * pct / 100)); }
+    function cand(prio, param, name, cur, dir, pct, why, title) {
+      if (!(cur === cur) || seen[param + dir]) return;
+      var nv = Math.max(0, cur + dir * step(cur, pct));
+      cands.push({ prio: prio, param: param, title: title, why: why, cli: ['set ' + param + ' = ' + nv + '  # war ' + f0(cur) + ', ' + (dir > 0 ? '+' : '-') + pct + ' %'], name: name });
+      seen[param + dir] = true;
+    }
+    if (powerLimit) { R.push({ area: 'PID Governor', title: 'Governor-PIDs erst nach der Leistungsreserve beurteilen', obs: 'Der Gas-Ausgang laeuft zeitweise am Limit. Einbrueche der Drehzahl sind dann eine Antriebsgrenze, keine Gain-Frage - zuerst Antrieb (Ritzel, Akku, Headspeed) pruefen.', cli: [], note: 'Siehe Reiter Antrieb.' }); return R; }
+    if (gv.p01 !== undefined && gv.p01 <= GT.dip_p01) {
+      if (ev && ev.upMean <= -GT.err_hint) cand(1, 'gov_f_gain', 'F', Fv, 1, 12, 'Beim Kollektiv-Anstieg bricht die Drehzahl im Mittel um ' + f0(-ev.upMean) + ' U/min ein: die Vorsteuerung (F) reagiert zu schwach.', 'F erhoehen (Einbruch bei Lastaufnahme)');
+      else if (ev && Math.max(ev.recUp, ev.recDn) > GT.rec_slow) cand(2, 'gov_i_gain', 'I', I, 1, 10, 'Die Drehzahl kehrt nach einem Einbruch erst nach ' + f1(Math.max(ev.recUp, ev.recDn)) + ' s zurueck: der Integralanteil arbeitet zu langsam.', 'I erhoehen (langsame Rueckkehr)');
+      else cand(3, 'gov_p_gain', 'P', P, 1, 10, 'Der 1-%-Wert der Abweichung liegt bei ' + f0(gv.p01) + ' U/min unter dem Ziel, ohne klares F- oder I-Muster: P etwas erhoehen.', 'P erhoehen (Einbruch unter Last)');
+    }
+    if (gv.p99 !== undefined && (gv.p99 >= T.over_p99_hint || gv.rate >= T.over_rate_hint)) {
+      if (ev && ev.upMean >= GT.err_hint) cand(1, 'gov_f_gain', 'F', Fv, -1, 10, 'Beim Kollektiv-Anstieg liegt die Drehzahl im Mittel +' + f0(ev.upMean) + ' U/min ueber dem Ziel: die Vorsteuerung (F) gibt zu viel Gas.', 'F senken (Ueberschwingen bei Lastaufnahme)');
+      else if (ev && ev.dnMean >= GT.err_hint) cand(1, 'gov_f_gain', 'F', Fv, 1, 10, 'Nach schnellem Kollektiv-Abfall liegt die Drehzahl im Mittel +' + f0(ev.dnMean) + ' U/min ueber dem Ziel: das Gas wird bei Lastabnahme nicht schnell genug zurueckgenommen.', 'F erhoehen (Ueberschwingen bei Lastabnahme)');
+      else if (!(oscPct >= T.osc_pct_hint)) cand(3, 'gov_p_gain', 'P', P, -1, 10, 'Ueberschwinger (99-%-Wert +' + f0(gv.p99) + ' U/min, ' + f0(gv.rate) + ' pro Minute) ohne klares F-Muster bei den Lastwechseln: der Regler korrigiert zu hart - P etwas senken.', 'P senken (Ueberschwinger)');
+    }
+    if (oscPct >= T.osc_pct_hint) {
+      var slow = oscF === oscF && oscF < 1.2;
+      if (slow) cand(2, 'gov_i_gain', 'I', I, -1, 10, 'In ' + f0(oscPct) + ' % der Fenster pendelt die Drehzahl langsam (' + f1(oscF) + ' Hz): typisch fuer einen zu hohen Integralanteil.', 'I senken (langsames Pendeln)');
+      else cand(2, 'gov_p_gain', 'P', P, -1, 10, 'In ' + f0(oscPct) + ' % der Fenster pendelt die Drehzahl' + (oscF === oscF ? ' mit ' + f1(oscF) + ' Hz' : '') + ': typisch fuer ein zu hohes P (Doku-Regel: P bis zu leichten Schwingungen erhoehen, dann um ein Drittel zurueck).', 'P senken (Pendeln)');
+    }
+    if (gv.median !== undefined && Math.abs(gv.median) >= GT.offset) cand(4, 'gov_i_gain', 'I', I, gv.median < 0 ? 1 : -1, 10, 'Die mittlere Abweichung vom Ziel betraegt ' + (gv.median >= 0 ? '+' : '') + f0(gv.median) + ' U/min: der Integralanteil gleicht den Dauerfehler nicht aus.', 'I anpassen (Dauerabweichung)');
+    cands.sort(function (a, b) { return a.prio - b.prio; });
+    var params = {}, firstDone = false;
+    cands.forEach(function (c) {
+      if (params[c.param]) { params[c.param].why += ' ' + c.why; return; }
+      params[c.param] = c; c.order = R.length;
+      R.push({ area: 'PID Governor', title: (firstDone ? 'Danach: ' : 'Erster Schritt: ') + c.title, obs: c.why, cli: c.cli, note: firstDone ? 'Erst nach dem Test des ersten Schritts, jeweils nur ein Wert pro Flug.' : 'Ein Wert pro Flug, danach gleiche Manoever (Pitch-Pumps, Funnel) fliegen und die Werte hier vergleichen. Reihenfolge der Governor-Werte im Header: P, I, D, F - bitte im Configurator (Reiter Governor) gegenpruefen.' });
+      firstDone = true;
+      c.ref = R[R.length - 1];
+    });
+    Object.keys(params).forEach(function (k) { var c = params[k]; c.ref.obs = c.why; });
+    return R;
+  }
+  var api = { analyze: analyze, findings: findings, recommendations: recommendations, GT: GT };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.RFG = api;
+})(typeof self !== 'undefined' ? self : this);
+
 /* Bereitet die Zeitreihen/Spektren fuer die Diagramme vor (laeuft im Worker). */
 (function (root) {
   'use strict';
@@ -848,7 +1161,9 @@ self.onmessage = function (e) {
       var name = d.name.replace(/\.[^.]*$/, '') + (logs.length > 1 ? ' (Log ' + (i + 1) + ')' : '');
       var m = RFA.analyze(df, logs[i].header, name, d.cells || null);
       var item = { name: name, m: m };
-      if (m.ok) { item.F = RFF.makeFindings(m); item.R = RFF.makePidRecommendations(m); item.P = RFP.plotData(df, m); item.sev = RFF.overallState(item.F); }
+      if (m.ok) { item.F = RFF.makeFindings(m); item.R = RFF.makePidRecommendations(m); item.P = RFP.plotData(df, m); try { var V = RFV.analyze(m); m.vib = V; item.VR = RFV.recommendations(V, m); item.F = item.F.concat(RFV.findings(V, m)); item.R = item.R.concat(item.VR); } catch (e) { m.vib = { ok: false, error: String(e) }; item.VR = []; }
+        try { var G = RFG.analyze(m); m.gtune = G; item.GR = RFG.recommendations(G, m); if (G.internal && G.ev) item.F.forEach(function (x) { if (x.area === 'Governor' && /Ueberschwinger|schiesst/.test(x.title) && x.todo) x.todo += ' Ob F wirklich die Ursache ist, zeigt die Lastwechsel-Auswertung weiter unten - massgeblich sind die Governor-PID-Empfehlungen.'; }); item.F = item.F.concat(RFG.findings(G, m)); item.R = item.R.filter(function (r) { return r.area !== 'PID Governor'; }).concat(item.GR); } catch (e2) { m.gtune = { ok: false }; item.GR = []; }
+        item.sev = RFF.overallState(item.F); }
       delete m.fl; if (m.mot) delete m.mot.arr;
       out.push(item);
     }
@@ -1476,6 +1791,9 @@ window.__ROTOR__="<svg class=\"rotor\" viewBox=\"0 0 200 200\" fill=\"none\"><de
     spectro: 'Zeit nach rechts, Frequenz nach oben, hell = stark. Die oberen drei Felder zeigen Roll, Nick und Gier; senkrechte helle Streifen in allen dreien sind Manoever und normal. Das rote Feld unten zeigt NUR, wo das Heck staerker schwingt als Roll/Nick.',
     hover: 'Gyro-Spektrum nur aus ruhigen Schwebeflug-Phasen. Ein glatter Abfall nach rechts ist normale Bewegung/Wind. Nur eine echte Spitze (rot markiert) deutet auf eine Resonanz hin.',
     servos: 'Wie oft welcher Stellwert vorkam (logarithmisch). Hohe Balken ganz am Rand = Servo laeuft am Anschlag.',
+    vib: 'Vibrations-Spektrum je Achse (Schwebeflug/ruhiger Flug bei stabiler Drehzahl). Orange = Rohsignal vor den Filtern, blau = nach den Filtern. Violette Linien markieren Vielfache der Kopfdrehzahl (1P, 2P, ...), gelb unterlegt ist der Bereich des dynamischen Notch, die rote Linie der Tiefpass 1. Je weiter blau unter orange, desto besser filtern die Filter - eine blaue Spitze ist uebrig gebliebene Vibration.',
+    viblevel: 'Vibrationspegel (Effektivwert oberhalb 20 Hz) ueber den Flug, vor und nach den Filtern, dazu die Kopfdrehzahl. Anstiege im Pegel bei Manoevern sind normal; ein dauerhaft hoher blauer Pegel deutet auf Restvibration hin.',
+    govterms: 'Oben die Drehzahl-Abweichung vom Ziel (grau: +-20 U/min). Darunter die Anteile des Governors am Gas-Ausgang: P reagiert auf die Abweichung, F ist die Vorsteuerung aus Kollektiv und Zyklik, D daempft. Unten der I-Anteil, der die Grundlast traegt und langsam nachregelt.',
     power: 'Motor-Ausgang des Flugreglers, Strom, Spannung und ESC-Temperatur im Flug. Flache Spitzen an der roten Linie = Antrieb am Limit.',
     battery: 'Links die Packspannung, rechts die Spannung pro Zelle ueber der verbrauchten Kapazitaet.' };
   function masked(a, f) { var o = new Float64Array(a.length); for (var i = 0; i < a.length; i++) o[i] = f(a[i]) ? a[i] : NaN; return o; }
@@ -1543,6 +1861,34 @@ window.__ROTOR__="<svg class=\"rotor\" viewBox=\"0 0 200 200\" fill=\"none\"><de
     Ch.figure(el, { caption: CAP.hover, rows: [{ h: 230, panels: [{ title: 'Gyro-Spektrum bei ruhigen Sticks (' + m.hover_n + ' Fenster)', xlabel: 'Hz', ylog: true, series: ser, spans: [{ x0: 2, x1: 8, color: 'rgba(251,191,36,.18)' }],
       vlines: m.hover_peaks.slice(0, 3).map(function (p, i) { return { x: p[1], color: C.red, dash: 'dash', label: p[0] + ' ' + p[1].toFixed(1) + ' Hz', row: i }; }), xlim: [1, 60] }] }] });
   }
+  function vibSpectrum(el, m, P) {
+    var V = m.vib; if (!V || !V.ok) return; var h = V.psdA[0].length, x = [], k, j;
+    for (j = 1; j < h; j++) x.push(j * V.df); var fx = Float64Array.from(x);
+    var rows = [], S = V.set;
+    for (k = 0; k < 3; k++) {
+      var a = Float64Array.from(x.map(function (_, i) { return Math.sqrt(V.psdA[k][i + 1]); })), ser = [];
+      if (V.hasRaw) ser.push({ x: fx, y: Float64Array.from(x.map(function (_, i) { return Math.sqrt(V.psdR[k][i + 1]); })), color: C.orange, width: 1, label: k === 0 ? 'vor den Filtern' : null });
+      ser.push({ x: fx, y: a, color: C.blue, width: 1.3, label: k === 0 ? 'nach den Filtern' : null });
+      var vl = []; for (var n = 1; n * V.fh < V.nyq; n++) vl.push({ x: n * V.fh, color: 'rgba(167,139,250,.55)', dash: 'dot', label: n <= 8 ? n + 'P' : null, row: 0 });
+      if (V.lp_on) vl.push({ x: S.lpf1, color: C.red, dash: 'dash', label: 'Tiefpass 1', row: 1 });
+      var sp = (S.dn_count > 0 && S.dn_max > S.dn_min) ? [{ x0: S.dn_min, x1: Math.min(S.dn_max, V.nyq), color: 'rgba(251,191,36,.08)' }] : [];
+      rows.push({ h: 175, panels: [{ title: k === 0 ? 'Vibrations-Spektrum (Amplitude, log)' : null, ylabel: ['Roll', 'Nick', 'Gier'][k] + ' [deg/s/\u221aHz]', xlabel: k === 2 ? 'Frequenz [Hz]' : null, xticks: k === 2, ylog: true, ylim: [1e-2, 1e2], xlim: [0, V.nyq], series: ser, vlines: vl, spans: sp, legend: k === 0 ? 'left' : false }] });
+    }
+    Ch.figure(el, { caption: CAP.vib, rows: rows });
+  }
+  function vibLevel(el, m, P) {
+    var V = m.vib; if (!V || !V.ok) return; var L = V.lvl, ser = [];
+    if (V.hasRaw) ser.push({ x: L.t, y: L.raw, color: C.orange, width: 1, label: 'vor den Filtern' });
+    ser.push({ x: L.t, y: L.adc, color: C.blue, width: 1.3, label: 'nach den Filtern' }); ser.push({ x: L.t, y: L.hs, color: C.grey, width: .9, axis: 'y2', dash: 'dash', label: 'Kopfdrehzahl' });
+    Ch.figure(el, { caption: CAP.viblevel, rows: [{ h: 200, panels: [{ title: 'Vibrationspegel ueber den Flug', xlabel: 'Zeit [s]', ylabel: 'deg/s (> 20 Hz)', y2label: 'U/min', y2: true, series: ser, legend: 'left' }] }] });
+  }
+  function govTerms(el, m, P) {
+    var G = m.gtune; if (!G || !G.internal || !G.series) return; var S = G.series, xl = [S.t[0], S.t[S.t.length - 1]];
+    Ch.figure(el, { caption: CAP.govterms, rows: [
+      { h: 140, panels: [{ title: 'Governor-Anteile', xlim: xl, xticks: false, ylabel: 'Abweichung [U/min]', ylim: [-150, 250], series: [{ x: S.t, y: S.e, color: C.blue, width: .9 }], hlines: [{ y: 20, color: C.grey }, { y: -20, color: C.grey }, { y: 0, color: '#d5dcee', dash: '' }] }] },
+      { h: 130, panels: [{ xlim: xl, xticks: false, ylabel: 'P / D / F', series: [{ x: S.t, y: S.P, color: C.orange, width: .8, label: 'P' }, { x: S.t, y: S.F, color: C.green, width: 1.1, label: 'F (Vorsteuerung)' }, { x: S.t, y: S.D, color: C.purple, width: .8, label: 'D' }], legend: 'left' }] },
+      { h: 110, panels: [{ xlim: xl, xlabel: 'Zeit [s]', ylabel: 'I-Anteil', series: [{ x: S.t, y: S.I, color: C.red, width: 1.1 }] }] }] });
+  }
   function servos(el, m, P) {
     var panels = [], F = P.fl;
     for (var k = 0; k < 4; k++) { var a = F.servo[k]; if (!a || !m.servo[k]) continue; var s = m.servo[k], h = Ch.hist(a, s.lo, s.hi + 1e-6, 60);
@@ -1562,7 +1908,7 @@ window.__ROTOR__="<svg class=\"rotor\" viewBox=\"0 0 200 200\" fill=\"none\"><de
       { title: 'Spannung ueber den Flug', xlabel: 'Zeit [s]', ylabel: 'Packspannung [V]', legend: 'bottom', series: [{ x: F.t, y: F.V, color: C.grey, width: .5, label: 'roh' }, { x: F.t, y: vs, color: C.green, width: 1.4, label: 'geglaettet' }] },
       { title: 'Entladekurve', xlabel: 'verbrauchte Kapazitaet [mAh]', ylabel: 'Spannung pro Zelle [V]', series: [{ x: Float64Array.from(m.curve[0]), y: Float64Array.from(m.curve[1]), color: C.blue, width: 1.6 }] }] }] });
   }
-  var api = { overview: overview, governor: governor, load: load, yaw: yaw, spectro: spectro, hover: hover, servos: servos, power: power, battery: battery, CAP: CAP };
+  var api = { overview: overview, governor: governor, load: load, yaw: yaw, spectro: spectro, hover: hover, vibSpectrum: vibSpectrum, vibLevel: vibLevel, govTerms: govTerms, servos: servos, power: power, battery: battery, CAP: CAP };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Figures = api;
 })(typeof self !== 'undefined' ? self : this);
 
@@ -1573,8 +1919,8 @@ window.__ROTOR__="<svg class=\"rotor\" viewBox=\"0 0 200 200\" fill=\"none\"><de
   var SL = { warn: 'Handlungsbedarf', hint: 'Hinweis', ok: 'In Ordnung', info: 'Info' };
   var RANK = { warn: 0, hint: 1, ok: 2, info: 3 };
   var SEVO = { warn: 0, hint: 1, info: 2, ok: 3 };
-  var AREAS = ['Heck', 'Governor', 'Antrieb', 'Akku', 'ESC', 'Servos', 'Hover', 'Signal'];
-  var PRIO = ['Heck', 'Governor', 'Antrieb', 'ESC/Telemetrie', 'Akku', 'ESC', 'Servos', 'Hover', 'Signal', 'Log'];
+  var AREAS = ['Heck', 'Governor', 'Antrieb', 'Akku', 'ESC', 'Servos', 'Hover', 'Vibration', 'Signal'];
+  var PRIO = ['Heck', 'Governor', 'Antrieb', 'ESC/Telemetrie', 'Akku', 'ESC', 'Servos', 'Hover', 'Vibration', 'Signal', 'Log'];
   function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function nn(v) { return v === null || v === undefined || v !== v; }
   function fnum(v, d, suf) { return nn(v) ? '-' : v.toFixed(d) + (suf || ''); }
@@ -1624,6 +1970,7 @@ window.__ROTOR__="<svg class=\"rotor\" viewBox=\"0 0 200 200\" fill=\"none\"><de
     if (!R.length) return '<div class="find ok"><span class="badge b-ok">In Ordnung</span><b>PID &amp; Filter</b><p>Keine konkreten Messhinweise auf PID- oder Filter-Probleme. Tracking, Governor und Spektrum sehen unauffaellig aus.</p></div>';
     return R.map(function (r) {
       var cli = r.cli && r.cli.length ? '<div class="todo"><b>CLI-Befehle (Rotorflight Configurator &rarr; CLI):</b><pre style="margin:6px 0 0;font-size:12px;background:#1e293b;color:#e2e8f0;padding:8px 12px;border-radius:6px;overflow-x:auto">' + esc(r.cli.join('\n')) + '</pre><span class="small">Einen Wert pro Flug aendern, danach erneut fliegen und vergleichen.</span></div>' : '';
+      if (r.note) cli += '<div class="todo"><b>Hinweis:</b> ' + esc(r.note) + '</div>';
       return '<div class="find hint"><span class="badge b-hint">Empfehlung</span><b>' + esc(r.area) + ': ' + esc(r.title) + '</b><p>' + esc(r.obs) + '</p>' + cli + '</div>';
     }).join('');
   }
@@ -1646,6 +1993,21 @@ window.__ROTOR__="<svg class=\"rotor\" viewBox=\"0 0 200 200\" fill=\"none\"><de
     return '<table>' + r.map(function (x) { return '<tr><td>' + esc(x[0]) + '</td><td>' + esc(x[1]) + '</td></tr>'; }).join('') + '</table>';
   }
 
+  function vibTable(V) {
+    if (!V || !V.ok) return '';
+    var h = '<h3>Vibrationspegel je Frequenzband (deg/s, Effektivwert)</h3><table><tr><th>Achse</th>' + V.bands.map(function (b) { return '<th>' + b[0].toFixed(0) + '-' + (b[1] > 900 ? 'max' : b[1].toFixed(0)) + ' Hz</th>'; }).join('') + '</tr>';
+    ['Roll', 'Nick', 'Gier'].forEach(function (a, k) { h += '<tr><td>' + a + (V.hasRaw ? ' (roh / gefiltert)' : ' (gefiltert)') + '</td>' + V.bands.map(function (b, i) { return '<td>' + (V.hasRaw ? V.rmsR[k][i].toFixed(1) + ' / ' : '') + V.rmsA[k][i].toFixed(1) + '</td>'; }).join('') + '</tr>'; });
+    h += '</table>';
+    if (V.peaks.length) {
+      h += '<h3>Gefundene Spitzen</h3><table><tr><th>Frequenz</th><th>Zuordnung</th><th>Achse</th>' + (V.hasRaw ? '<th>roh</th>' : '') + '<th>gefiltert</th>' + (V.hasRaw ? '<th>D&auml;mpfung</th>' : '') + '</tr>';
+      V.peaks.forEach(function (p) {
+        h += '<tr><td>' + p.f.toFixed(1) + ' Hz</td><td>' + (p.n ? p.n + 'P Hauptrotor' : 'fest / unbekannt') + '</td><td>' + ['Roll', 'Nick', 'Gier'].filter(function (a, i) { return p.axes[i]; }).join('/') + '</td>' +
+          (V.hasRaw ? '<td>' + p.ampR.toFixed(1) + '</td>' : '') + '<td>' + p.ampA.toFixed(1) + '</td>' + (V.hasRaw ? '<td>' + p.att.toFixed(0) + ' dB</td>' : '') + '</tr>';
+      });
+      h += '</table><div class="small">Amplituden in deg/s. Kopfdrehzahl ' + V.hs.toFixed(0) + ' U/min = ' + V.fh.toFixed(1) + ' Hz (1P). Spektrum aus ' + V.nWin + ' Fenstern mit stabiler Drehzahl, Aufl&ouml;sung ' + V.df.toFixed(2) + ' Hz.</div>';
+    }
+    return h;
+  }
   /* Reiter: html = String, figs = [fn(el)] werden nach dem Einfuegen gezeichnet */
   function buildTabs(it) {
     var m = it.m;
@@ -1656,11 +2018,11 @@ window.__ROTOR__="<svg class=\"rotor\" viewBox=\"0 0 200 200\" fill=\"none\"><de
     var f = function (fn) { return function (el) { fn(el, m, P); }; };
     add('Übersicht', it.sev, sub + kpis(m) + fazitHtml(F) + '<div class="cards">' + cardsFor(F) + '</div><div class="figs"></div><h3>Signal / Telemetrie</h3>' + block(F, ['Signal', 'Log']), [f(Fg.overview)]);
     add('Heck', sevOf(F, ['Heck']), block(F, ['Heck']) + '<div class="figs"></div>', [f(Fg.yaw), f(Fg.spectro)]);
-    add('Governor', sevOf(F, ['Governor', 'ESC/Telemetrie']), block(F, ['Governor', 'ESC/Telemetrie']) + '<div class="figs"></div>', [f(Fg.governor), f(Fg.load)]);
+    add('Governor', sevOf(F, ['Governor', 'ESC/Telemetrie']), block(F, ['Governor', 'ESC/Telemetrie']) + (it.GR && it.GR.length ? '<h3>Governor-PID-Empfehlungen</h3>' + pidHtml(it.GR) : '') + '<div class="figs"></div>', [f(Fg.governor), f(Fg.load), f(Fg.govTerms)]);
     add('Antrieb', sevOf(F, ['Antrieb', 'ESC']), block(F, ['Antrieb', 'ESC']) + '<div class="figs"></div>', [f(Fg.power)]);
     add('Akku', sevOf(F, ['Akku']), block(F, ['Akku']) + '<div class="figs"></div>', [f(Fg.battery)]);
     add('Servos', sevOf(F, ['Servos']), block(F, ['Servos']) + '<div class="figs"></div>', [f(Fg.servos)]);
-    add('Vibration', sevOf(F, ['Hover']), block(F, ['Hover']) + '<div class="figs"></div>', [f(Fg.hover)]);
+    add('Vibration', sevOf(F, ['Hover', 'Vibration']), block(F, ['Vibration', 'Hover']) + (it.VR && it.VR.length ? '<h3>Filter-Empfehlungen</h3>' + pidHtml(it.VR) : '') + vibTable(m.vib) + '<div class="figs"></div>', [f(Fg.vibSpectrum), f(Fg.vibLevel), f(Fg.hover)]);
     add('PID & Filter', R.length ? 'hint' : 'ok', "<p class='small'>Basierend auf den gemessenen Werten dieses Fluges. Immer nur einen Parameter pro Flug aendern.</p>" + pidHtml(R));
     add('Einstellungen', 'none', '<h3>Einstellungen aus dem Log</h3>' + settingsTable(m.hdr || {}) + '<h3>Alle Kennzahlen</h3>' + detailTable(m));
     return tabs;
